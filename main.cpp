@@ -1,6 +1,10 @@
 #include <SDL.h>
 #include <SDL_image.h>
 
+#include <iostream>
+#include <fstream>
+#include <string>
+
 //---------------------------------------------------------------------------
 
 const int     g_w     = 480;
@@ -33,7 +37,7 @@ typedef struct Stamp {
 } Stamp;
 
 int   g_cur_stamp=1;
-const int   n_stamps = 2;
+const int   n_stamps = 3;
 Stamp g_stamps[n_stamps];
 
 int g_glider[] ={ 0, 1, 0,
@@ -43,6 +47,31 @@ int g_glider[] ={ 0, 1, 0,
 int g_block[] ={ 1, 1,
                  1, 1 };
 
+int g_single[] ={ 1 };
+
+
+int g_color=1;
+
+//---------------------------------------------------------------------------
+
+int readCells( const std::string &fname, Stamp &s )
+{
+  std::string line;
+  std::ifstream f(fname.c_str());
+  if(f.is_open())
+  {
+    while ( getline(f,line) )
+    {
+    }
+    f.close();
+  }
+  else {
+    std::cout << "Unable to open file\n"; 
+    return 0;
+  }
+
+  return 1;
+}
 
 //---------------------------------------------------------------------------
 
@@ -95,6 +124,11 @@ void initialize()
   g_stamps[1].w = 2;
   g_stamps[1].h = 2;
   g_stamps[1].d = g_block;
+  
+  g_stamps[2].w = 1;
+  g_stamps[2].h = 1;
+  g_stamps[2].d = g_single;
+
 
 }
 
@@ -124,10 +158,6 @@ void rotate( Stamp *s )
       tmp[i + j*c] = s->d[i + j*c];
     }
   }
-
-///  [1 2]   [7 4 1]         (0,0) --> (2,0)
-///  [4 5] = [8 5 2]         (0,1) --> (1,0)
-///  [7 8]                   (1,2) --> (0,1)
 
   for(int i=0; i<c; i++) {
     for(int j=0; j<r; j++) {
@@ -189,11 +219,11 @@ void input()
      g_player_row+=1;
    }
 
-   if( g_player_row<0 )             g_player_row = 0;
-   if( g_player_row>=g_world_rows ) g_player_row = g_world_rows-1;
+   if( g_player_row<1 )             g_player_row = 1;
+   if( g_player_row>=g_world_rows-g_stamps[g_cur_stamp].h ) g_player_row = g_world_rows-g_stamps[g_cur_stamp].h-1;
 
-   if( g_player_col<0 )             g_player_col = 0;
-   if( g_player_col>=g_world_cols ) g_player_col = g_world_cols-1;
+   if( g_player_col<1 )             g_player_col = 1;
+   if( g_player_col>=g_world_cols-g_stamps[g_cur_stamp].w ) g_player_col = g_world_cols-g_stamps[g_cur_stamp].w-1;
  } 
 
  if( SDL_GetTicks() > last2+200 ) {
@@ -208,7 +238,7 @@ void input()
 
        for(int i=0; i<s.w; i++) {
          for(int j=0; j<s.h; j++) {
-             g_world[(g_player_col+i) + ((j+g_player_row)* g_world_cols)] = s.d[i+s.w*j];
+             g_world[(g_player_col+i) + ((j+g_player_row)* g_world_cols)] = s.d[i+s.w*j] * g_color;
          }
        }
    }
@@ -242,6 +272,13 @@ void input()
      rotate( &g_stamps[g_cur_stamp] );
    }
 
+   if( keys[SDL_SCANCODE_A]==1 )
+   {
+     g_color++;
+     if(g_color > 2) g_color=1;
+   }
+
+
 
  }
 }
@@ -261,18 +298,23 @@ int set( int col, int row, int val )
 
 //---------------------------------------------------------------------------
 
-int neighbors( int i, int j )
+int neighbors( int i, int j, int* avg=0 )
 {
-  int r=0;
+  int r=0,v;
+  float a=0;
 
-  if(value(i-1,(j-1))) r++;
-  if(value(i  ,(j-1))) r++;
-  if(value(i+1,(j-1))) r++;
-  if(value(i-1,    j)) r++;
-  if(value(i+1,    j)) r++;
-  if(value(i-1,(j+1))) r++;
-  if(value(i  ,(j+1))) r++;
-  if(value(i+1,(j+1))) r++;
+  if(v=value(i-1,(j-1))) r++; a+=v;
+  if(v=value(i  ,(j-1))) r++; a+=v;
+  if(v=value(i+1,(j-1))) r++; a+=v;
+  if(v=value(i-1,    j)) r++; a+=v;
+  if(v=value(i+1,    j)) r++; a+=v;
+  if(v=value(i-1,(j+1))) r++; a+=v;
+  if(v=value(i  ,(j+1))) r++; a+=v;
+  if(v=value(i+1,(j+1))) r++; a+=v;
+
+  a/=r;
+  a+=0.5;
+  if(avg) *avg=int(a);
 
   return r;
 }
@@ -284,6 +326,7 @@ void update()
   static unsigned last = 0;
   int *p;
 
+
 //  if( SDL_GetTicks() > last + 500 ) {
 //    last = SDL_GetTicks();
 
@@ -291,8 +334,9 @@ void update()
     {
       for(int j=1; j<g_world_rows-1; j++)
       {
-        int n=neighbors(i,j);
-        if( value(i,j) )
+        int a,v;
+        int n=neighbors(i,j,&a);
+        if( v=value(i,j) )
         {
           if((n<2) || (n>3))
           {
@@ -300,12 +344,12 @@ void update()
           }
           else
           {
-            set(i,j,1);
+            set(i,j,a);
           }
         }
         else
         {
-          if(n==3) set(i,j,1);
+          if(n==3) set(i,j,a);
           else set(i,j,0);
         }
       }
@@ -324,15 +368,17 @@ void draw()
   SDL_SetRenderDrawColor(g_pRenderer, 0, 0, 0, 255);
   SDL_RenderClear(g_pRenderer);
 
-  SDL_SetRenderDrawColor( g_pRenderer, 255, 0, 0, 255);
-
   SDL_Rect r;
   r.w=r.h=g_cell_size;
   for(int i=0;i<g_world_cols; i++)
   {
     for(int j=0; j<g_world_rows; j++)
     {
-      if(value(i,j)) {
+      int v;
+      if(v=value(i,j)) {
+        if(v==1) SDL_SetRenderDrawColor( g_pRenderer, 255, 0, 0, 255);
+        else SDL_SetRenderDrawColor( g_pRenderer, 0, 0, 255, 255);
+
         r.x = g_xoff + g_cell_border + i * (g_cell_size+g_cell_border);
         r.y = g_yoff + g_cell_border + j * (g_cell_size+g_cell_border);
         SDL_RenderFillRects( g_pRenderer, &r, 1 );
@@ -340,17 +386,10 @@ void draw()
     } 
   }
 
-  Stamp s = g_stamps[g_cur_stamp];
-
-  SDL_SetRenderDrawColor( g_pRenderer, 0, 255, 0, 255);
-//  // print boarder around stamp 
-//  r.w=s.w*(g_cell_size + g_cell_border);//+ g_cell_border;
-//  r.h=s.h*(g_cell_size + g_cell_border);//+ g_cell_border;
-//  r.x = g_xoff + g_player_col * (g_cell_size + g_cell_border);
-//  r.y = g_yoff + g_player_row * (g_cell_size + g_cell_border);
-//  SDL_RenderDrawRect( g_pRenderer, &r );
-
   // draw stamp
+  Stamp s = g_stamps[g_cur_stamp];
+  SDL_SetRenderDrawColor( g_pRenderer, 0, 255, 0, 255);
+
   r.w=r.h=g_cell_size;
   for(int i=0; i<s.w; i++) {
     for(int j=0; j<s.h; j++) {
